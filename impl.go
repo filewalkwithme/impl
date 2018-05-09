@@ -38,6 +38,7 @@ to prevent shell globbing.
 var (
 	flagHeaderFile = flag.String("header", "", "File header, can be used to contain package definition, imports, other structs, etc")
 	flagStub       = flag.String("stub", "", "Custom stub, template to use to generate method implementation")
+	flagOutput     = flag.String("output", "", "Output file")
 	flagSrcDir     = flag.String("dir", "", "package source directory, useful for vendored code")
 )
 
@@ -323,6 +324,8 @@ func validReceiver(recv string) bool {
 }
 
 func main() {
+	var b strings.Builder
+
 	flag.Parse()
 
 	if len(flag.Args()) < 2 {
@@ -336,7 +339,7 @@ func main() {
 			fatal(err)
 		}
 
-		fmt.Printf("%s", string(fileHeader))
+		fmt.Fprintf(&b, "%s", string(fileHeader))
 	}
 
 	recv, iface := flag.Arg(0), flag.Arg(1)
@@ -356,7 +359,17 @@ func main() {
 	}
 
 	src := genStubs(recv, fns)
-	fmt.Print(string(src))
+	fmt.Fprint(&b, string(src))
+
+	if *flagOutput != "" {
+		os.RemoveAll(*flagOutput)
+		err = ioutil.WriteFile(*flagOutput, []byte(b.String()), 0644)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		fmt.Printf("%v", b.String())
+	}
 }
 
 func fatal(msg interface{}) {
