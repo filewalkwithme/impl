@@ -11,6 +11,7 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -35,7 +36,9 @@ to prevent shell globbing.
 `
 
 var (
-	flagSrcDir = flag.String("dir", "", "package source directory, useful for vendored code")
+	flagHeaderFile = flag.String("header", "", "File header, can be used to contain package definition, imports, other structs, etc")
+	flagStub       = flag.String("stub", "", "Custom stub, template to use to generate method implementation")
+	flagSrcDir     = flag.String("dir", "", "package source directory, useful for vendored code")
 )
 
 // findInterface returns the import path and identifier of an interface.
@@ -268,10 +271,11 @@ func funcs(iface string, srcDir string) ([]Func, error) {
 	return fns, nil
 }
 
-const stub = "func ({{.Recv}}) {{.Name}}" +
+var stub = "func ({{.Recv}}) {{.Name}}" +
 	"({{range .Params}}{{.Name}} {{.Type}}, {{end}})" +
 	"({{range .Res}}{{.Name}} {{.Type}}, {{end}})" +
-	"{\n" + "panic(\"not implemented\")" + "}\n\n"
+	"{\n defer func() {	_ = middleware.logger.Log({{range .Params}}\"{{.Name}}\", {{.Name}}, {{end}}) }(); \n" +
+	" return middleware.next.{{.Name}}({{range .Params}}{{.Name}}, {{end}}); }\n\n"
 
 var tmpl = template.Must(template.New("test").Parse(stub))
 
@@ -280,6 +284,19 @@ var tmpl = template.Must(template.New("test").Parse(stub))
 // If recv is not a valid receiver expression,
 // genStubs will panic.
 func genStubs(recv string, fns []Func) []byte {
+	if *flagStub != "" {
+		stubImplementation, err := ioutil.ReadFile(*flagStub)
+		if err != nil {
+			panic(err)
+		}
+
+		stub = fmt.Sprintf("func ({{.Recv}}) {{.Name}}"+
+			"({{range .Params}}{{.Name}} {{.Type}}, {{end}})"+
+			"({{range .Res}}{{.Name}} {{.Type}}, {{end}})"+
+			"{\n %s }\n\n", stubImplementation)
+		tmpl = template.Must(template.New("test").Parse(stub))
+	}
+
 	var buf bytes.Buffer
 	for _, fn := range fns {
 		meth := Method{Recv: recv, Func: fn}
@@ -311,6 +328,15 @@ func main() {
 	if len(flag.Args()) < 2 {
 		fmt.Fprint(os.Stderr, usage)
 		os.Exit(2)
+	}
+
+	if *flagHeaderFile != "" {
+		fileHeader, err := ioutil.ReadFile(*flagHeaderFile)
+		if err != nil {
+			fatal(err)
+		}
+
+		fmt.Printf("%s", string(fileHeader))
 	}
 
 	recv, iface := flag.Arg(0), flag.Arg(1)
