@@ -324,7 +324,7 @@ func validReceiver(recv string) bool {
 }
 
 func main() {
-	var b strings.Builder
+	var b bytes.Buffer
 
 	flag.Parse()
 
@@ -339,7 +339,7 @@ func main() {
 			fatal(err)
 		}
 
-		fmt.Fprintf(&b, "%s", string(fileHeader))
+		b.WriteString(string(fileHeader))
 	}
 
 	recv, iface := flag.Arg(0), flag.Arg(1)
@@ -359,7 +359,7 @@ func main() {
 	}
 
 	src := genStubs(recv, fns)
-	fmt.Fprint(&b, string(src))
+	b.WriteString(string(src))
 
 	if *flagOutput != "" {
 		os.RemoveAll(*flagOutput)
